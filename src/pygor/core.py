@@ -1,7 +1,7 @@
 # This program is in the public domain
-"""`igor.py` compatibility layer on top of the `igor` package.
+"""`pygor.py` compatibility layer on top of the `pygor` package.
 
-igor.load('filename') or igor.loads('data') loads the content of an igore file
+pygor.load('filename') or pygor.loads('data') loads the content of an igore file
 into memory as a folder structure.
 
 Returns the root folder.
@@ -10,35 +10,41 @@ Folders have name, path and children.
 Children can be indexed by folder[i] or by folder['name'].
 To see the whole tree, use: print folder.format()
 
-The usual igor folder types are given in the technical reports
+The usual pygor folder types are given in the technical reports
 PTN003.ifn and TN003.ifn.
 """
-from __future__ import absolute_import
-import io as _io
-import locale as _locale
-import re as _re
-import sys as _sys
+import io, locale, re, sys
 
-import numpy as _numpy
+import numpy as np
 
 from .binarywave import MAXDIMS as _MAXDIMS
-from .packed import load as _load
-from .record.base import UnknownRecord as _UnknownRecord
-from .record.folder import FolderStartRecord as _FolderStartRecord
-from .record.folder import FolderEndRecord as _FolderEndRecord
-from .record.history import HistoryRecord as _HistoryRecord
-from .record.history import GetHistoryRecord as _GetHistoryRecord
-from .record.history import RecreationRecord as _RecreationRecord
-from .record.packedfile import PackedFileRecord as _PackedFileRecord
-from .record.procedure import ProcedureRecord as _ProcedureRecord
-from .record.wave import WaveRecord as _WaveRecord
-from .record.variables import VariablesRecord as _VariablesRecord
+from .packed import load_pack
+from .record import (
+    UnknownRecord,
+    FolderStartRecord,
+    FolderEndRecord,
+    HistoryRecord,
+    GetHistoryRecord,
+    RecreationRecord,
+    PackedFileRecord,
+    ProcedureRecord,
+    WaveRecord,
+    VariablesRecord,
+)
 
+__all__ = [
+    "load",
+    "Variables",
+    "History",
+    "Wave",
+    "Recreation",
+    "Procedure",
+    "GetHistory",
+    "PackedFile",
+    "Folder",
+]
 
-__version__ = "0.10"
-
-
-ENCODING = _locale.getpreferredencoding() or _sys.getdefaultencoding()
+ENCODING = locale.getpreferredencoding() or sys.getdefaultencoding()
 PYKEYWORDS = set(
     (
         "and",
@@ -70,7 +76,7 @@ PYKEYWORDS = set(
         "yield",
     )
 )
-PYID = _re.compile(r"^[^\d\W]\w*$", _re.UNICODE)
+PYID = re.compile(r"^[^\d\W]\w*$", re.UNICODE)
 
 
 def valid_identifier(s):
@@ -154,7 +160,7 @@ class Wave(IgorObject):
         self.axis_units.extend([""] * (_MAXDIMS - len(self.axis_units)))
         self.axis_units = tuple(self.axis_units)
         self.axis = [
-            _numpy.linspace(b, b + a * (c - 1), c) for a, b, c in zip(sfA, sfB, dims)
+            np.linspace(b, b + a * (c - 1), c) for a, b, c in zip(sfA, sfB, dims)
         ]
         self.formula = d.get("formula", "")
         self.notes = d.get("note", "")
@@ -169,7 +175,7 @@ class Wave(IgorObject):
     def __array__(self):
         return self.data
 
-    __repr__ = __str__ = lambda s: "<igor.Wave %s>" % s.format()
+    __repr__ = __str__ = lambda s: "<pygor.Wave %s>" % s.format()
 
 
 class Recreation(IgorObject):
@@ -258,7 +264,7 @@ class Folder(IgorObject):
             raise KeyError("Folder %s does not exist" % key)
 
     def __str__(self):
-        return "<igor.Folder %s>" % "/".join(self.path)
+        return "<pygor.Folder %s>" % "/".join(self.path)
 
     __repr__ = __str__
 
@@ -284,15 +290,15 @@ class Folder(IgorObject):
 
 
 def loads(s, **kwargs):
-    """Load an igor file from string"""
-    stream = _io.BytesIO(s)
+    """Load an pygor file from string"""
+    stream = io.BytesIO(s)
     return load(stream, **kwargs)
 
 
 def load(filename, **kwargs):
-    """Load an igor file"""
+    """Load an pygor file"""
     try:
-        packed_experiment = _load(
+        packed_experiment = load_pack(
             filename, initial_byte_order=kwargs.pop("initial_byte_order", "=")
         )
     except ValueError as e:
@@ -308,34 +314,34 @@ def _convert(packed_experiment, ignore_unknown=True):
     records, filesystem = packed_experiment
     stack = [Folder(path=["root"])]
     for record in records:
-        if isinstance(record, _UnknownRecord):
+        if isinstance(record, UnknownRecord):
             if ignore_unknown:
                 continue
             else:
                 r = Unknown(record.data, type=record.header["recordType"])
-        elif isinstance(record, _GetHistoryRecord):
+        elif isinstance(record, GetHistoryRecord):
             r = GetHistory(record.text)
-        elif isinstance(record, _HistoryRecord):
+        elif isinstance(record, HistoryRecord):
             r = History(record.text)
-        elif isinstance(record, _PackedFileRecord):
+        elif isinstance(record, PackedFileRecord):
             r = PackedFile(record.text)
-        elif isinstance(record, _ProcedureRecord):
+        elif isinstance(record, ProcedureRecord):
             r = Procedure(record.text)
-        elif isinstance(record, _RecreationRecord):
+        elif isinstance(record, RecreationRecord):
             r = Recreation(record.text)
-        elif isinstance(record, _VariablesRecord):
+        elif isinstance(record, VariablesRecord):
             r = Variables(record)
-        elif isinstance(record, _WaveRecord):
+        elif isinstance(record, WaveRecord):
             r = Wave(record)
         else:
             r = None
 
-        if isinstance(record, _FolderStartRecord):
+        if isinstance(record, FolderStartRecord):
             path = stack[-1].path + [record.null_terminated_text.decode(ENCODING)]
             folder = Folder(path)
             stack[-1].append(folder)
             stack.append(folder)
-        elif isinstance(record, _FolderEndRecord):
+        elif isinstance(record, FolderEndRecord):
             stack.pop()
         elif r is None:
             raise NotImplementedError(record)

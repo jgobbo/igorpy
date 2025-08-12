@@ -1,4 +1,8 @@
 __pycache__
 *.pyc
 build/
-igor.egg-info/
+pygor.egg-info/
+
+dist/
+.venv/
+.pytest_cache/
